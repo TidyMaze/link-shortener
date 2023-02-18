@@ -60,8 +60,7 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
 
   private def listAllLongToShortKeys: IO[List[String]] =
     IO(redisClient.keys(longUrlToShortUrlKey("*")))
-      .map(_.getOrElse(List.empty[Option[String]]))
-      .map(_.flatten)
+      .map(_.toList.flatten.flatten)
 }
 
 object RedisLinkStorage {
