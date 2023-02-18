@@ -14,7 +14,7 @@ import io.circe.syntax.*
 
 class LinkShortenerHttpServer(storage: LinkStorage) {
   val publicHost = "http://localhost:8080"
-  
+
   val helloWorldService = HttpRoutes
     .of[IO] {
       case req @ PUT -> Root / "create" =>
@@ -23,6 +23,11 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
           id <- storage.createLink(request.url)
           response = CreateLinkResponse(s"$publicHost/$id")
           resp <- Created(response)
+        } yield resp
+      case GET -> Root / "list" =>
+        for {
+          links <- storage.listLinks()
+          resp <- Ok(ListLinksResponse(links))
         } yield resp
       case GET -> Root / id =>
         storage.expandLink(id).map {
@@ -43,6 +48,10 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
       .withHost(ipv4"0.0.0.0")
       .withPort(port"8080")
       .withHttpApp(httpApp)
+      .withErrorHandler {
+        case e =>
+          IO(println(s"Error handling request: $e")) *> IO.raiseError(e)
+      }
       .build
   }
 }
