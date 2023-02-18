@@ -38,9 +38,7 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
     s"link-$longUrl"
 
   override def listLinks(): IO[List[Link]] =
-    IO(redisClient.keys(longUrlToShortUrlKey("*")))
-      .map(_.getOrElse(List.empty[Option[String]]))
-      .map(_.flatten)
+    listAllLongToShortKeys
       .flatMap { keys =>
         keys.map { key =>
           for {
@@ -59,6 +57,11 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
           } yield Link(url, shortUrl)
         }.sequence
       }
+
+  private def listAllLongToShortKeys: IO[List[String]] =
+    IO(redisClient.keys(longUrlToShortUrlKey("*")))
+      .map(_.getOrElse(List.empty[Option[String]]))
+      .map(_.flatten)
 }
 
 object RedisLinkStorage {
