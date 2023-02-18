@@ -22,17 +22,23 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
         val shortUrl = shortener.shorten(url)
         for {
           // to find the original url from the short url
-          forward <- IO(redisClient.set(s"rev-link-$shortUrl", url))
+          forward <- IO(redisClient.set(shortUrlToLongUrlKey(shortUrl), url))
           // to find the short url from the original url
-          backward <- IO(redisClient.set(s"link-$url", shortUrl))
+          backward <- IO(redisClient.set(longUrlToShortUrlKey(url), shortUrl))
         } yield shortUrl
     }
 
   override def expandLink(shortUrl: String): IO[Option[String]] =
-    IO(redisClient.get(s"rev-link-$shortUrl"))
+    IO(redisClient.get(shortUrlToLongUrlKey(shortUrl)))
+
+  private def shortUrlToLongUrlKey(shortUrl: String): String =
+    s"rev-link-$shortUrl"
+
+  private def longUrlToShortUrlKey(longUrl: String): String =
+    s"link-$longUrl"
 
   override def listLinks(): IO[List[Link]] =
-    IO(redisClient.keys("link-*"))
+    IO(redisClient.keys(longUrlToShortUrlKey("*")))
       .map(_.getOrElse(List.empty[Option[String]]))
       .map(_.flatten)
       .flatMap { keys =>
@@ -43,7 +49,7 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
                 IO.raiseError(new RuntimeException(s"Could not find $key"))
               )
             )
-            url <- IO(redisClient.get(s"rev-link-$shortUrl")).flatMap(
+            url <- IO(redisClient.get(shortUrlToLongUrlKey(shortUrl))).flatMap(
               _.map(IO.pure).getOrElse(
                 IO.raiseError(
                   new RuntimeException(s"Could not find rev-link-$shortUrl")
