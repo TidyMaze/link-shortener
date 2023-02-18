@@ -9,12 +9,11 @@ import org.scalatest.wordspec.AsyncWordSpec
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.implicits.uri
 import org.http4s.client.dsl.io.*
-import org.http4s.headers.*
 import org.http4s.{Header, Headers, MediaType, Response, Uri}
 import org.http4s.dsl.io.{GET, PUT}
 import org.typelevel.ci.CIString
 import org.http4s.client.Client
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 
 import scala.concurrent.ExecutionContext.global
 
@@ -22,7 +21,7 @@ class MyAppTest
     extends AsyncWordSpec
     with AsyncIOSpec
     with Matchers
-    with BeforeAndAfterAll {
+    with BeforeAndAfterEach {
   val httpClient = EmberClientBuilder.default[IO].build
 
   def purgeRedis(): Unit = {
@@ -30,8 +29,8 @@ class MyAppTest
     redisClient.flushall
   }
 
-  override def beforeAll(): Unit = {
-    super.beforeAll()
+  override def beforeEach(): Unit = {
+    super.beforeEach()
     // delete everything in redis
     purgeRedis()
   }
@@ -70,6 +69,23 @@ class MyAppTest
 
   }
 
+  "a call to list links" should {
+    "return all links" in {
+
+      val longUri = uri"""https://www.google.com"""
+
+      buildAndRunApp.use(server => {
+        val serverUri = server.baseUri
+        IO(println("Server started on address " + serverUri.toString)) *> {
+          for {
+            res <- httpClient.use(callCreateUrl(serverUri, _, longUri))
+            links <- httpClient.use(callListLinks(serverUri, _))
+          } yield assert(links.length == 1)
+        }
+      })
+    }
+  }
+
   private def getExpandedUri(
       shortened: Uri,
       httpClient: Client[IO]
@@ -99,5 +115,18 @@ class MyAppTest
       )
       .map(_.url)
       .map(Uri.unsafeFromString)
+  }
+
+  private def callListLinks(
+      serverAddress: Uri,
+      httpClient: Client[IO]
+  ): IO[List[Link]] = {
+    val fullUri = serverAddress / "list"
+    httpClient
+      .expect[ListLinksResponse](
+        GET(fullUri, Headers("Content-Type" -> "application/json"))
+      )
+      .map(_.links)
+
   }
 }
