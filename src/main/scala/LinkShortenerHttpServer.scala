@@ -21,13 +21,17 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
         for {
           request <- req.as[CreateLinkRequest]
           id <- storage.createLink(request.url)
-          response = CreateLinkResponse(s"$publicHost/$id")
+          response = CreateLinkResponse(addServerHostPrefix(id))
           resp <- Created(response)
         } yield resp
       case GET -> Root / "list" =>
         for {
           links <- storage.listLinks()
-          resp <- Ok(ListLinksResponse(links))
+          resp <- Ok(
+            ListLinksResponse(
+              links.map(l => Link(l.url, addServerHostPrefix(l.shortUrl)))
+            )
+          )
         } yield resp
       case GET -> Root / id =>
         storage.expandLink(id).map {
@@ -41,6 +45,10 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
         }
     }
 
+  private def addServerHostPrefix(id: String): String = {
+    s"$publicHost/$id"
+  }
+
   def build() = {
     val httpApp = Router("/" -> helloWorldService).orNotFound
     EmberServerBuilder
@@ -48,9 +56,8 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
       .withHost(ipv4"0.0.0.0")
       .withPort(port"8080")
       .withHttpApp(httpApp)
-      .withErrorHandler {
-        case e =>
-          IO(println(s"Error handling request: $e")) *> IO.raiseError(e)
+      .withErrorHandler { case e =>
+        IO(println(s"Error handling request: $e")) *> IO.raiseError(e)
       }
       .build
   }

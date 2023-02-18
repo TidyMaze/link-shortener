@@ -24,47 +24,33 @@ class MyAppTest
     with BeforeAndAfterEach {
   val httpClient = EmberClientBuilder.default[IO].build
 
-  def purgeRedis(): Unit = {
-    val redisClient = new RedisClient("localhost", 6379)
-    redisClient.flushall
-  }
+  def purgeRedis(): Unit = new RedisClient("localhost", 6379).flushall
 
   override def beforeEach(): Unit = {
     super.beforeEach()
-    // delete everything in redis
     purgeRedis()
   }
 
   "a call to create an URL" should {
     "create and return a short url" in {
-
       val longUri = uri"""https://www.google.com"""
-
-      buildAndRunApp.use(server => {
-        val serverUri = server.baseUri
-        IO(println("Server started on address " + serverUri.toString)) *> {
-          for {
-            res <- httpClient.use(callCreateUrl(serverUri, _, longUri))
-          } yield assert(res.toString.startsWith("http://localhost:8080/"))
-        }
-      })
+      buildAndRunApp.use { server =>
+        httpClient
+          .use(callCreateUrl(server.baseUri, _, longUri))
+          .map(res => assert(res.toString.startsWith("http://localhost:8080/")))
+      }
     }
   }
 
   "a call to access a shortened url" should {
     "return the full url as a redirect" in {
-
       val longUri = uri"""https://www.abc.com"""
-
-      buildAndRunApp.use(server => {
-        val serverUri = server.baseUri
-        IO(println("Server started on address " + serverUri.toString)) *> {
-          for {
-            shortened <- httpClient.use(callCreateUrl(serverUri, _, longUri))
-            accessResponse <- httpClient.use(getExpandedUri(shortened, _))
-          } yield assert(accessResponse.contains(longUri))
-        }
-      })
+      buildAndRunApp.use { server =>
+        for {
+          shortened <- httpClient.use(callCreateUrl(server.baseUri, _, longUri))
+          accessResponse <- httpClient.use(getExpandedUri(shortened, _))
+        } yield assert(accessResponse.contains(longUri))
+      }
     }
 
   }
@@ -74,15 +60,12 @@ class MyAppTest
 
       val longUri = uri"""https://www.google.com"""
 
-      buildAndRunApp.use(server => {
-        val serverUri = server.baseUri
-        IO(println("Server started on address " + serverUri.toString)) *> {
-          for {
-            res <- httpClient.use(callCreateUrl(serverUri, _, longUri))
-            links <- httpClient.use(callListLinks(serverUri, _))
-          } yield assert(links.length == 1)
-        }
-      })
+      buildAndRunApp.use { server =>
+        for {
+          res <- httpClient.use(callCreateUrl(server.baseUri, _, longUri))
+          links <- httpClient.use(callListLinks(server.baseUri, _))
+        } yield assert(links === List(Link(longUri.toString, res.toString)))
+      }
     }
   }
 
