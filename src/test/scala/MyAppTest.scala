@@ -69,8 +69,8 @@ class MyAppTest
           links <- httpClient.use(callListLinks(server.baseUri, _))
         } yield assert(
           links.sortBy(_.url) === List(
-            Link(uri"""https://www.abc.com""".toString, res2.toString),
-            Link(uri"""https://www.google.com""".toString, res.toString),
+            Link(uri"""https://www.abc.com""".toString, res2.toString, 0),
+            Link(uri"""https://www.google.com""".toString, res.toString, 0)
           )
         )
       }

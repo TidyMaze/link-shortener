@@ -29,7 +29,7 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
           links <- storage.listLinks()
           resp <- Ok(
             ListLinksResponse(
-              links.map(l => Link(l.url, addServerHostPrefix(l.shortUrl)))
+              links.map(l => l.copy(shortUrl = addServerHostPrefix(l.shortUrl)))
             )
           )
         } yield resp
@@ -57,7 +57,7 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
       .withPort(port"8080")
       .withHttpApp(httpApp)
       .withErrorHandler { case e =>
-        IO(println(s"Error handling request: $e")) *> IO.raiseError(e)
+        IO(e.printStackTrace()) *> IO.raiseError(e)
       }
       .build
   }

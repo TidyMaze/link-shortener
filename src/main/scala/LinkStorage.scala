@@ -4,6 +4,7 @@ import cats.effect.IO
 import cats.effect.kernel.Resource
 import com.redis.RedisClient
 import cats.implicits._
+import com.redis.serialization.Parse.Implicits.parseInt
 
 trait LinkStorage {
   def createLink(url: String): IO[String]
@@ -16,7 +17,7 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
     extends LinkStorage {
 
   override def createLink(url: String): IO[String] =
-    IO(redisClient.get(url)).flatMap {
+    IO(redisClient.get[String](url)).flatMap {
       case Some(shortUrl) => IO.pure(shortUrl)
       case None =>
         val shortUrl = shortener.shorten(url)
@@ -25,6 +26,8 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
           forward <- IO(redisClient.set(shortUrlToLongUrlKey(shortUrl), url))
           // to find the short url from the original url
           backward <- IO(redisClient.set(longUrlToShortUrlKey(url), shortUrl))
+          // to count the number of times the short url has been used
+          count <- IO(redisClient.set(s"count-$shortUrl", 0))
         } yield shortUrl
     }
 
@@ -42,24 +45,33 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
       .flatMap { keys =>
         keys.map { key =>
           for {
-            shortUrl <- IO(redisClient.get(key)).flatMap(
+            shortUrl <- IO(redisClient.get[String](key)).flatMap(
               _.map(IO.pure).getOrElse(
                 IO.raiseError(new RuntimeException(s"Could not find $key"))
               )
             )
-            url <- IO(redisClient.get(shortUrlToLongUrlKey(shortUrl))).flatMap(
+            url <- IO(redisClient.get[String](shortUrlToLongUrlKey(shortUrl)))
+              .flatMap(
+                _.map(IO.pure).getOrElse(
+                  IO.raiseError(
+                    new RuntimeException(s"Could not find rev-link-$shortUrl")
+                  )
+                )
+              )
+
+            count <- IO(redisClient.get[Int](s"count-$shortUrl")).flatMap(
               _.map(IO.pure).getOrElse(
                 IO.raiseError(
-                  new RuntimeException(s"Could not find rev-link-$shortUrl")
+                  new RuntimeException(s"Could not find count-$shortUrl")
                 )
               )
             )
-          } yield Link(url, shortUrl)
+          } yield Link(url, shortUrl, count)
         }.sequence
       }
 
   private def listAllLongToShortKeys: IO[List[String]] =
-    IO(redisClient.keys(longUrlToShortUrlKey("*")))
+    IO(redisClient.keys[String](longUrlToShortUrlKey("*")))
       .map(_.toList.flatten.flatten)
 }
 
