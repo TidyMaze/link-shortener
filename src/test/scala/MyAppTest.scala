@@ -58,13 +58,21 @@ class MyAppTest
   "a call to list links" should {
     "return all links" in {
 
-      val longUri = uri"""https://www.google.com"""
-
       buildAndRunApp.use { server =>
         for {
-          res <- httpClient.use(callCreateUrl(server.baseUri, _, longUri))
+          res <- httpClient.use(
+            callCreateUrl(server.baseUri, _, uri"""https://www.google.com""")
+          )
+          res2 <- httpClient.use(
+            callCreateUrl(server.baseUri, _, uri"""https://www.abc.com""")
+          )
           links <- httpClient.use(callListLinks(server.baseUri, _))
-        } yield assert(links === List(Link(longUri.toString, res.toString)))
+        } yield assert(
+          links.sortBy(_.url) === List(
+            Link(uri"""https://www.abc.com""".toString, res2.toString),
+            Link(uri"""https://www.google.com""".toString, res.toString),
+          )
+        )
       }
     }
   }
