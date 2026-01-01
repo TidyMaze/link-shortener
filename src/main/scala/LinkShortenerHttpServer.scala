@@ -11,6 +11,7 @@ import org.http4s.server.Router
 import io.circe.*
 import io.circe.generic.auto.*
 import io.circe.syntax.*
+import fr.yaro.link.GetFullUrlResponse
 
 class LinkShortenerHttpServer(storage: LinkStorage) {
   val publicHost = "http://localhost:8080"
@@ -34,14 +35,13 @@ class LinkShortenerHttpServer(storage: LinkStorage) {
           )
         } yield resp
       case GET -> Root / id =>
-        storage.expandLink(id).map {
-          case Some(url) =>
-            Response(
-              PermanentRedirect,
-              headers = Headers("Location" -> url)
-            )
+        storage.expandLinkWithCount(id).flatMap {
+          case Some(link) =>
+            for {
+              response <- Ok(GetFullUrlResponse(link))
+            } yield response.withHeaders(Headers("Location" -> link.url))
           case None =>
-            Response(NotFound)
+            IO.pure(Response(NotFound))
         }
     }
 

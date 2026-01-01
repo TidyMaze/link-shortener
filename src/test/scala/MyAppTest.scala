@@ -16,6 +16,7 @@ import org.http4s.client.Client
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 
 import scala.concurrent.ExecutionContext.global
+import cats.implicits.*
 
 class MyAppTest
     extends AsyncWordSpec
@@ -49,7 +50,20 @@ class MyAppTest
         for {
           shortened <- httpClient.use(callCreateUrl(server.baseUri, _, longUri))
           accessResponse <- httpClient.use(getExpandedUri(shortened, _))
-        } yield assert(accessResponse.contains(longUri))
+        } yield assert(accessResponse._1 === longUri)
+      }
+    }
+
+  }
+
+  "a call to access a shortened url" should {
+    "return the incremented count" in {
+      val longUri = uri"""https://www.abc.com"""
+      buildAndRunApp.use { server =>
+        for {
+          shortened <- httpClient.use(callCreateUrl(server.baseUri, _, longUri))
+          accessResponse <- httpClient.use(getExpandedUri(shortened, _))
+        } yield assert(accessResponse._2 === 1)
       }
     }
 
@@ -80,13 +94,16 @@ class MyAppTest
   private def getExpandedUri(
       shortened: Uri,
       httpClient: Client[IO]
-  ): IO[Option[Uri]] = {
-    httpClient.get(shortened)(response =>
-      IO(
-        response.headers
-          .get(CIString("Location"))
-          .map(l => Uri.unsafeFromString(l.head.value))
-      )
+  ): IO[(Uri, Int)] = {
+    httpClient.get[(Uri, Int)](shortened)(response =>
+      for {
+        getFullUrlResponse <- response.as[GetFullUrlResponse]
+        locationHeaderUri <- IO.fromOption(
+          response.headers
+            .get(CIString("Location"))
+            .map(l => Uri.unsafeFromString(l.head.value))
+        )(new Exception("No location header"))
+      } yield (locationHeaderUri, getFullUrlResponse.link.useCount)
     )
   }
 

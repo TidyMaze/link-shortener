@@ -9,6 +9,7 @@ import com.redis.serialization.Parse.Implicits.parseInt
 trait LinkStorage {
   def createLink(url: String): IO[String]
   def expandLink(shortUrl: String): IO[Option[String]]
+  def expandLinkWithCount(shortUrl: String): IO[Option[Link]]
 
   def listLinks(): IO[List[Link]]
 }
@@ -33,6 +34,27 @@ class RedisLinkStorage(redisClient: RedisClient, shortener: Shortener)
 
   override def expandLink(shortUrl: String): IO[Option[String]] =
     IO(redisClient.get(shortUrlToLongUrlKey(shortUrl)))
+
+  override def expandLinkWithCount(shortUrl: String): IO[Option[Link]] =
+    for {
+      urlOpt <- IO(redisClient.get[String](shortUrlToLongUrlKey(shortUrl)))
+      result <- urlOpt match {
+        case Some(url) =>
+          for {
+            // Increment count and get the new value
+            countOpt <- IO(redisClient.incr(s"count-$shortUrl"))
+            count <- countOpt match {
+              case Some(longCount) => IO.pure(longCount.toInt)
+              case None =>
+                // If incr fails, try to get existing count or default to 1
+                IO(redisClient.get[Int](s"count-$shortUrl")).flatMap(
+                  _.map(IO.pure).getOrElse(IO.pure(1))
+                )
+            }
+          } yield Some(Link(url, shortUrl, count))
+        case None => IO.pure(None)
+      }
+    } yield result
 
   private def shortUrlToLongUrlKey(shortUrl: String): String =
     s"rev-link-$shortUrl"
